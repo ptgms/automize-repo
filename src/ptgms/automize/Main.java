@@ -1,12 +1,13 @@
 package ptgms.automize;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
+import java.util.zip.GZIPOutputStream;
+import org.apache.commons.compress.compressors.bzip2.*;
 
 public class Main {
-
+    
     public static void main(String[] args) {
-	    System.out.println("Deleting old Package Files...");
+        System.out.println("Deleting old Package Files...");
         File f= new File("Packages.bz2");
         File f2= new File("Packages.gz");
         if (f.exists() && f2.exists()) {
@@ -19,24 +20,49 @@ public class Main {
         }
         ProcessBuilder processBuilderInit = new ProcessBuilder();
         processBuilderInit.command("bash", "-c", "dpkg-scanpackages Files /dev/null > Packages");
-        ProcessBuilder processBuilder = new ProcessBuilder();
-        processBuilder.command("bash", "-c", "gzip -c9 Packages > Packages.gz");
-        ProcessBuilder processBuilder2 = new ProcessBuilder();
-        processBuilder2.command("bash", "-c", "bzip2 -c9 Packages > Packages.bz2");
+        byte[] buffer = new byte[1024];
         try {
             Process process2 = processBuilderInit.start();
-            Process process = processBuilder.start();
-            Process process1 = processBuilder2.start();
-            int exitVal = process.waitFor();
-            int exitVal2 = process1.waitFor();
-            int exitVal3 = process2.waitFor();
-            if (exitVal != 1 && exitVal2 != 1 && exitVal3 != 1) {
-                System.out.println("Successfully created new Package files.");
-            } else {
-                System.out.println("Values: " + exitVal3 + exitVal + exitVal);
-                System.out.println("Could not make package files. Please do it manually.");
-                System.exit(-1);
+            int exitVal = process2.waitFor();
+            GZIPOutputStream os =
+            new GZIPOutputStream(new FileOutputStream("Packages.gz"));
+            FileInputStream in =
+            new FileInputStream("Packages");
+            int totalSize;
+            while((totalSize = in.read(buffer)) > 0 ) {
+                os.write(buffer, 0, totalSize);
             }
+            in.close();
+            os.finish();
+            os.close();
+            
+            FileInputStream in2 =
+            new FileInputStream("Packages");
+            FileOutputStream fos = new FileOutputStream("Packages.bz2");
+            
+            byte[] bytes = in2.readAllBytes();
+            try (InputStream is = new ByteArrayInputStream(bytes)) {
+                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                try (OutputStream os2 = new BZip2CompressorOutputStream(bout, 1)) {
+                    byte[] buf = new byte[4096];
+                    int len = 0;
+                    while ((len = is.read(buf, 0, buf.length)) != -1) {
+                        os2.write(buf, 0, len);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                
+                /* strip the header from the byte array and return it */
+                bytes = bout.toByteArray();
+                byte[] bzip2 = new byte[bytes.length - 2];
+                System.arraycopy(bytes, 2, bzip2, 0, bzip2.length);
+                fos.write(bzip2);
+                fos.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
